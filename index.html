@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Дашборд регистраций</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --text: #1c2430;
+    --muted: #6b7686;
+    --line: #e3e6eb;
+    --total: #2b5fd9;
+    --paid: #1e8e5a;
+    --unpaid: #d4462f;
+    --bar-bg: #eef0f4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px 48px;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    line-height: 1.4;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  h1 { font-size: 22px; margin: 0; }
+  .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  button.load {
+    font: inherit; font-size: 14px; padding: 8px 14px; cursor: pointer;
+    background: var(--card); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px;
+  }
+  button.load:hover { border-color: var(--total); color: var(--total); }
+  .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
+  .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+  .kpi .label { font-size: 14px; color: var(--muted); }
+  .kpi .num { font-size: 56px; font-weight: 700; line-height: 1.1; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .kpi .hint { font-size: 13px; color: var(--muted); }
+  .kpi.total .num { color: var(--total); }
+  .kpi.paid .num { color: var(--paid); }
+  .kpi.unpaid .num { color: var(--unpaid); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; overflow-x: auto; }
+  .card.wide { grid-column: 1 / -1; }
+  h2 { font-size: 16px; margin: 0 0 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 8px 6px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; white-space: normal; }
+  th { font-weight: 600; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+  tfoot td { font-weight: 700; border-bottom: 0; }
+  td.paid { color: var(--paid); }
+  td.unpaid { color: var(--unpaid); }
+  .pct { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
+  .bar { width: 56px; height: 6px; background: var(--bar-bg); border-radius: 3px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--paid); }
+  .err { background: #fdecea; color: #8a2a1c; border: 1px solid #f3c2ba; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; display: none; }
+  @media (max-width: 760px) {
+    .grid { grid-template-columns: 1fr; }
+    .kpi .num { font-size: 44px; }
+  }
+  @media (max-width: 480px) {
+    .kpis { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Регистрации на мероприятие</h1>
+      <div class="sub" id="source"></div>
+    </div>
+    <div>
+      <button class="load" id="loadBtn" type="button">Загрузить другой CSV</button>
+      <input type="file" id="file" accept=".csv,text/csv" hidden>
+    </div>
+  </header>
+
+  <div class="err" id="err"></div>
+
+  <section class="kpis">
+    <div class="kpi total"><div class="label">Всего регистраций</div><div class="num" id="kTotal">0</div><div class="hint">&nbsp;</div></div>
+    <div class="kpi paid"><div class="label">Оплатили</div><div class="num" id="kPaid">0</div><div class="hint" id="hPaid"></div></div>
+    <div class="kpi unpaid"><div class="label">Не оплатили</div><div class="num" id="kUnpaid">0</div><div class="hint" id="hUnpaid"></div></div>
+  </section>
+
+  <section class="grid">
+    <div class="card"><h2>По каналам (откуда пришли)</h2><div id="tSource"></div></div>
+    <div class="card"><h2>По городам</h2><div id="tCity"></div></div>
+    <div class="card wide"><h2>По типам билета</h2><div id="tTicket"></div></div>
+  </section>
+</div>
+
+<script>
+// Данные из registrations.csv вшиты прямо в страницу — работает без интернета.
+var EMBEDDED_CSV = `name,city,registered,source,ticket,paid
+Айгерим,Астана,2026-10-30,Telegram,VIP,да
+Данияр,Актобе,2026-10-22,Email-рассылка,Стандарт,да
+Ольга,Астана,2026-11-07,Сайт,Стандарт,да
+Нурлан,Астана,2026-10-21,Telegram,Стандарт,да
+Асель,Астана,2026-10-27,Email-рассылка,Стандарт,да
+Ерлан,Астана,2026-11-07,Instagram,VIP,да
+Мадина,Алматы,2026-11-07,Telegram,Стандарт,да
+Тимур,Алматы,2026-10-21,Сайт,Стандарт,да
+Жанна,Астана,2026-11-02,Email-рассылка,Стандарт,да
+Арман,Актобе,2026-11-06,Email-рассылка,Стандарт,да
+Динара,Алматы,2026-11-07,Email-рассылка,Стандарт,да
+Руслан,Алматы,2026-10-23,Партнёры,Стандарт,да
+Алина,Астана,2026-11-08,Telegram,VIP,нет
+Бекзат,Алматы,2026-11-13,Telegram,VIP,нет
+Сауле,Астана,2026-10-31,Instagram,Онлайн,да
+Ильяс,Караганда,2026-11-11,Instagram,Стандарт,да
+Камила,Алматы,2026-11-05,Сайт,Стандарт,нет
+Санжар,Шымкент,2026-10-29,Instagram,Стандарт,нет
+Елена,Караганда,2026-10-25,Telegram,Стандарт,нет
+Азамат,Астана,2026-11-02,Email-рассылка,Стандарт,да
+Гульнара,Шымкент,2026-10-30,Telegram,VIP,нет
+Максим,Караганда,2026-11-07,Telegram,Стандарт,да
+Аружан,Алматы,2026-10-28,Партнёры,VIP,да
+Ерасыл,Караганда,2026-10-21,Партнёры,Стандарт,нет
+Томирис,Шымкент,2026-10-29,Telegram,Онлайн,да
+Даурен,Алматы,2026-10-20,Telegram,Стандарт,да
+Карина,Астана,2026-11-04,Instagram,Онлайн,да
+Олжас,Караганда,2026-10-24,Instagram,Стандарт,нет
+Айдана,Астана,2026-11-04,Instagram,Стандарт,нет
+Марат,Астана,2026-11-06,Сайт,Стандарт,нет
+`;
+
+function parseCSV(text) {
+  text = text.replace(/^﻿/, '');
+  var rows = [], row = [], cell = '', q = false, i, c;
+  for (i = 0; i < text.length; i++) {
+    c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; }
+      else cell += c;
+    } else if (c === '"') q = true;
+    else if (c === ',') { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(cell); cell = '';
+      rows.push(row); row = [];
+    } else cell += c;
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  rows = rows.filter(function (r) { return r.some(function (v) { return v.trim() !== ''; }); });
+  if (!rows.length) return [];
+  var head = rows[0].map(function (h) { return h.trim().toLowerCase(); });
+  return rows.slice(1).map(function (r) {
+    var o = {};
+    head.forEach(function (h, idx) { o[h] = (r[idx] || '').trim(); });
+    return o;
+  });
+}
+
+function isPaid(v) { return /^(да|yes|true|1|оплачено)$/i.test(v); }
+
+function group(rows, key) {
+  var map = {};
+  rows.forEach(function (r) {
+    var k = r[key] || '(не указано)';
+    var g = map[k] || (map[k] = { name: k, total: 0, paid: 0 });
+    g.total++;
+    if (isPaid(r.paid)) g.paid++;
+  });
+  return Object.keys(map).map(function (k) { return map[k]; })
+    .sort(function (a, b) { return b.total - a.total || a.name.localeCompare(b.name, 'ru'); });
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; });
+}
+function pct(a, b) { return b ? Math.round(a / b * 100) : 0; }
+
+function table(title, groups, total, paid) {
+  var h = '<table><thead><tr><th>' + title + '</th><th>Всего</th><th>Оплатили</th><th>Не оплатили</th><th>% оплаты</th></tr></thead><tbody>';
+  groups.forEach(function (g) {
+    var p = pct(g.paid, g.total);
+    h += '<tr><td>' + esc(g.name) + '</td><td>' + g.total + '</td><td class="paid">' + g.paid +
+      '</td><td class="unpaid">' + (g.total - g.paid) + '</td><td><span class="pct">' + p +
+      '%<span class="bar"><i style="width:' + p + '%"></i></span></span></td></tr>';
+  });
+  h += '</tbody><tfoot><tr><td>Итого</td><td>' + total + '</td><td class="paid">' + paid +
+    '</td><td class="unpaid">' + (total - paid) + '</td><td>' + pct(paid, total) + '%</td></tr></tfoot></table>';
+  return h;
+}
+
+function render(rows, label) {
+  var total = rows.length;
+  var paid = rows.filter(function (r) { return isPaid(r.paid); }).length;
+  document.getElementById('kTotal').textContent = total;
+  document.getElementById('kPaid').textContent = paid;
+  document.getElementById('kUnpaid').textContent = total - paid;
+  document.getElementById('hPaid').textContent = pct(paid, total) + '% от всех';
+  document.getElementById('hUnpaid').textContent = pct(total - paid, total) + '% от всех';
+  document.getElementById('tSource').innerHTML = table('Канал', group(rows, 'source'), total, paid);
+  document.getElementById('tCity').innerHTML = table('Город', group(rows, 'city'), total, paid);
+  document.getElementById('tTicket').innerHTML = table('Тип билета', group(rows, 'ticket'), total, paid);
+  document.getElementById('source').textContent = label;
+}
+
+function showError(msg) {
+  var e = document.getElementById('err');
+  e.textContent = msg;
+  e.style.display = msg ? 'block' : 'none';
+}
+
+render(parseCSV(EMBEDDED_CSV), 'Источник: registrations.csv (встроен в страницу)');
+
+document.getElementById('loadBtn').addEventListener('click', function () {
+  document.getElementById('file').click();
+});
+document.getElementById('file').addEventListener('change', function (ev) {
+  var f = ev.target.files[0];
+  if (!f) return;
+  var reader = new FileReader();
+  reader.onload = function () {
+    var rows = parseCSV(String(reader.result));
+    if (!rows.length || !('paid' in rows[0])) {
+      showError('Не удалось прочитать файл: нужен CSV с колонками name, city, registered, source, ticket, paid.');
+      return;
+    }
+    showError('');
+    render(rows, 'Источник: ' + f.name);
+  };
+  reader.onerror = function () { showError('Не удалось открыть файл.'); };
+  reader.readAsText(f, 'UTF-8');
+  ev.target.value = '';
+});
+</script>
+</body>
+</html>
